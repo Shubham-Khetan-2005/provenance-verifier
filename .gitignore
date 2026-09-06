@@ -57,3 +57,6 @@ artifact.hash
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
+
+bundle.json
+payload.json

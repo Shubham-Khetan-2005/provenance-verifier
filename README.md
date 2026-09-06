@@ -1,10 +1,10 @@
 # Ethereum Contract Provenance Verifier
 
 **Track Applied For:** Track 4 (Sigstore)\
-**Team Name:** WebHeads
-**Team Members:** Shubham Khetan, Mohisha Gupta
-**GitHub Repository:** https://github.com/Shubham-Khetan-2005/provenance-verifier
-**Deployed Contract Address:** 0x09bb3F7339f9617CD601D2EB07106041d3aeCA04
+**Team Name:** WebHeads\
+**Team Members:** Shubham Khetan, Mohisha Gupta\
+**GitHub Repository:** https://github.com/Shubham-Khetan-2005/provenance-verifier\
+**Deployed Contract Address:** 0x09bb3F7339f9617CD601D2EB07106041d3aeCA04\
 **Demo Video:** [Link]
 
 ## 1. Problem Statement & Overview

@@ -48,7 +48,7 @@ async function verifyProvenance(registryAddress, targetContractAddress) {
         execSync(`cosign verify-blob payload.json \\
             --bundle bundle.json \\
             --certificate-identity="${signerIdentity}" \\
-            --certificate-oidc-issuer="https://github.com/login/oauth"`, 
+            --certificate-oidc-issuer-regexp="https://(accounts.google.com|github.com/login/oauth|login.microsoftonline.com/.*)"`, 
             { stdio: "pipe" } 
         );
     } catch (cosignError) {

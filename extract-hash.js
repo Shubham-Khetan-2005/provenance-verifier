@@ -2,7 +2,10 @@ const fs = require("fs");
 const { ethers } = require("ethers");
 
 // Replace this with the wallet address you will use to deploy!
-const DEPLOYER_ADDRESS = "0x4Bd0053ab48e56A5f52454b92ca14320167F2af9";
+// const DEPLOYER_ADDRESS = "0x4Bd0053ab48e56A5f52454b92ca14320167F2af9";
+const DEPLOYER_ADDRESS = process.argv[2]; 
+console.log("Using deployer address:", DEPLOYER_ADDRESS);
+if (!DEPLOYER_ADDRESS) throw new Error("Please provide a deployer address");
 
 const artifactPath = "./out/VendorPayment.sol/VendorPayment.json";
 const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));

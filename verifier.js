@@ -1,6 +1,8 @@
 const { ethers } = require("ethers");
 const { execSync } = require("child_process");
 const fs = require("fs");
+const dotenv = require("dotenv");
+dotenv.config();
 
 // Ensure your Alchemy URL is active in your .env or replace this string
 const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://eth-sepolia.g.alchemy.com/v2/XlSNcm38QIP8s7FOVhgCLLUECVAplZhM"); 
@@ -78,5 +80,6 @@ async function verifyProvenance(registryAddress, targetContractAddress) {
   }
 }
 
-// Ensure these match your final successful Sepolia deployments
-verifyProvenance("0x1d80bef4311fa48852199dab9cc469d8646f2542", "0x2735347e5cc262Cdc459Aa0461dC230d7CFa8187");
+const targetAddress = process.argv[2];
+verifyProvenance(process.env.REGISTRY_ADDRESS, targetAddress);
+console.log("Using registry address:", process.env.REGISTRY_ADDRESS);

@@ -2,8 +2,12 @@
 pragma solidity 0.8.30;
 
 interface IProvenanceRegistry {
-    function register(address deployer, bytes32 artifactHash, string calldata provenanceURI, string calldata signerIdentity)
-        external;
+    function register(
+        address deployer,
+        bytes32 artifactHash,
+        string calldata provenanceURI,
+        string calldata signerIdentity
+    ) external;
 }
 
 contract VendorPayment {

@@ -15,9 +15,12 @@ contract ProvenanceRegistry {
 
     event Registered(address indexed contractAddress, address indexed deployer);
 
-    function register(address deployer, bytes32 artifactHash, string calldata provenanceURI, string calldata signerIdentity)
-        external
-    {
+    function register(
+        address deployer,
+        bytes32 artifactHash,
+        string calldata provenanceURI,
+        string calldata signerIdentity
+    ) external {
         require(records[msg.sender].timestamp == 0, "Already registered");
 
         records[msg.sender] = Provenance({

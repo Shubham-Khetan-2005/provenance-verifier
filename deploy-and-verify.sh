@@ -8,7 +8,7 @@ set +o allexport
 
 echo "1. Generating Payload..."
 # Using PUBLIC_KEY from your .env
-node extract-hash.js $PUBLIC_KEY
+node extract-hash.js
 
 echo -e "\n2. Signing Payload..."
 COSIGN_EXPERIMENTAL=1 cosign sign-blob payload.json --bundle bundle.json --yes

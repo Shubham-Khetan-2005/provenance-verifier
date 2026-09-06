@@ -1,11 +1,12 @@
 const fs = require("fs");
 const { ethers } = require("ethers");
 
-// Replace this with the wallet address you will use to deploy!
-// const DEPLOYER_ADDRESS = "0x4Bd0053ab48e56A5f52454b92ca14320167F2af9";
-const DEPLOYER_ADDRESS = process.argv[2]; 
+// Derive address directly from the private key
+const wallet = new ethers.Wallet(process.env.PRIVATE_KEY);
+const DEPLOYER_ADDRESS = wallet.address;
+
 console.log("Using deployer address:", DEPLOYER_ADDRESS);
-if (!DEPLOYER_ADDRESS) throw new Error("Please provide a deployer address");
+if (!DEPLOYER_ADDRESS) throw new Error("Failed to derive deployer address from private key");
 
 const artifactPath = "./out/VendorPayment.sol/VendorPayment.json";
 const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
@@ -13,14 +14,11 @@ const artifact = JSON.parse(fs.readFileSync(artifactPath, "utf8"));
 const runtimeBytecode = artifact.deployedBytecode.object;
 const bytecodeHash = ethers.keccak256(runtimeBytecode);
 
-// Create a binding between the code and your wallet
 const payload = {
     bytecodeHash: bytecodeHash,
     deployer: DEPLOYER_ADDRESS
 };
 
 console.log("Payload to sign:", payload);
-
-// Save the JSON payload to a file
 fs.writeFileSync("payload.json", JSON.stringify(payload, null, 2));
 console.log("Saved to payload.json for Cosign signing.");

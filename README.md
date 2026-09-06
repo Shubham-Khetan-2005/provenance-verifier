@@ -1,66 +1,61 @@
-## Foundry
+# Ethereum Contract Provenance Verifier
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+**Devcon Track 4: Sigstore - Verifiable Supply Chain**
 
-Foundry consists of:
+Web3 supply chains are broken. While anyone can inspect deployed bytecode on block explorers, there is no standardized way to mathematically prove *who* deployed it. This project bridges Ethereum's on-chain execution with Sigstore's off-chain identity verification, allowing users to independently verify that a deployed contract's runtime bytecode is cryptographically bound to a specific developer's real-world identity (via GitHub/OIDC).
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+## System Architecture
 
-## Documentation
+The provenance pipeline operates entirely without a centralized backend, relying on three decoupled pillars:
 
-https://book.getfoundry.sh/
+*   **On-Chain Truth (EVM):** A registry smart contract (`ProvenanceRegistry.sol`) acts as the immutable ledger. When a target contract is deployed, its constructor automatically registers the deployment using `msg.sender`, locking the deployer's address, bytecode hash, Rekor log index, and signer identity.
+*   **Off-Chain Identity (Sigstore):** A deterministic Foundry build is hashed and bundled into a JSON payload alongside the deployer's wallet address. This payload is signed via the Cosign CLI using keyless OIDC authentication.
+*   **Independent Verification Engine:** A Node.js script dynamically fetches the live on-chain registry data, rebuilds the local environment to guarantee bytecode parity, and delegates the validation of the cryptographic bundle to the native Cosign CLI.
 
-## Usage
+## Prerequisites
 
-### Build
+This pipeline requires a Unix-like environment (Linux, macOS, or Windows WSL). Ensure you have the following installed:
+*   **Node.js** (v22+)
+*   **Foundry** (`forge`)
+*   **Cosign CLI**
 
-```shell
-$ forge build
+## Quickstart
+
+**1. Installation**
+```
+git clone https://github.com/Shubham-Khetan-2005/sigstore-provenance-verifier.git
+cd sigstore-provenance-verifier
+npm install
+forge install
 ```
 
-### Test
+**2. Configuration**
+Create a `.env` file in the project root by copying `.env.example`. Populate it with your specific credentials:
 
-```shell
-$ forge test
+```
+PRIVATE_KEY=YOUR_TEST_WALLET_PRIVATE_KEY
+RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_ALCHEMY_KEY
+REGISTRY_ADDRESS=0x1D80BEF4311fa48852199dab9cC469D8646f2542
+SIGNER_IDENTITY=The email that you use to sign into sigstore
 ```
 
-### Format
+*(Ensure each variable is on its own line. Do not wrap values in quotes).*
 
-```shell
-$ forge fmt
+**3. Deploy and Verify**
+Run the automated pipeline script. This master script extracts your public wallet address, generates the deterministic payload, triggers the Cosign OIDC browser login, deploys the contract to Sepolia, and instantly runs the off-chain verifier.
+
+```
+chmod +x deploy-and-verify.sh
+./deploy-and-verify.sh
 ```
 
-### Gas Snapshots
+If successful, the verifier will output:
 
-```shell
-$ forge snapshot
-```
+VERIFIED
+ - Ethereum Deployment: Authentic
+ - Bytecode Match: 100% Confirmed
+ - Sigstore Provenance: 
 
-### Anvil
+## Security Model
 
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+The verification engine intentionally decouples cryptographic signature verification from semantic data validation. The native `cosign` CLI strictly handles the X.509 certificate parsing, OIDC issuer validation, and Rekor inclusion proofs. Ethers.js and Foundry handle the EVM-specific bytecode parity checks. If an attacker tampers with the deployed bytecode or attempts to spoof the deployment wallet, the Sigstore verification instantly rejects the binding.

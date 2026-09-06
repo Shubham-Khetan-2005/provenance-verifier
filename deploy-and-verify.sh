@@ -1,47 +1,56 @@
 #!/bin/bash
-set -e # STOP immediately if any command fails
+set -e
 
-# Load environment variables securely
 set -o allexport
 source .env
 set +o allexport
 
-echo "1. Generating Payload..."
-# Using PUBLIC_KEY from your .env
+GITHUB_BRANCH="${GITHUB_BRANCH:-main}"
+
 node extract-hash.js
 
-echo -e "\n2. Signing Payload..."
 COSIGN_EXPERIMENTAL=1 cosign sign-blob payload.json --bundle bundle.json --yes
 
-echo -e "\n3. Extracting Log Index & Hash..."
-# CORRECTED: Added .verificationMaterial to the JSON path
-LOG_INDEX=$(node -p "require('./bundle.json').verificationMaterial.tlogEntries[0].logIndex")
 BYTECODE_HASH=$(node -p "require('./payload.json').bytecodeHash")
+[ -z "$BYTECODE_HASH" ] && { echo "couldn't get bytecode hash from payload.json"; exit 1; }
 
-echo "Found Log Index: $LOG_INDEX"
-echo "Found Bytecode Hash: $BYTECODE_HASH"
+PROV_DIR="provenance/$BYTECODE_HASH"
+PROVENANCE_URI="https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}/${PROV_DIR}"
 
-if [ -z "$LOG_INDEX" ]; then
-    echo "🔴 Error: Failed to extract Log Index from bundle.json"
-    exit 1
+[ -z "$PROVENANCE_REPO_DIR" ] && { echo "set PROVENANCE_REPO_DIR in .env"; exit 1; }
+
+if [ -f "$PROVENANCE_REPO_DIR/$PROV_DIR/payload.json" ] && [ -f "$PROVENANCE_REPO_DIR/$PROV_DIR/bundle.json" ]; then
+    echo "already published, reusing: $PROVENANCE_URI"
+else
+    echo "new build $BYTECODE_HASH -> publishing to $GITHUB_REPO ($GITHUB_BRANCH)"
+    read -p "push provenance files? [y/N] " ok
+    [[ "$ok" =~ ^[Yy]$ ]] || { echo "not publishing, aborting"; exit 1; }
+
+    cwd=$(pwd)
+    mkdir -p "$PROVENANCE_REPO_DIR/$PROV_DIR"
+    cp payload.json bundle.json "$PROVENANCE_REPO_DIR/$PROV_DIR/"
+
+    cd "$PROVENANCE_REPO_DIR"
+    git pull origin "$GITHUB_BRANCH"
+    git add "$PROV_DIR"
+    git commit -m "provenance for $BYTECODE_HASH"
+    git push origin "$GITHUB_BRANCH"
+    cd "$cwd"
+
+    echo "published: $PROVENANCE_URI"
 fi
 
-echo -e "\n4. Deploying Contract..."
+echo "deploying VendorPayment..."
 DEPLOY_OUTPUT=$(forge create src/VendorPayment.sol:VendorPayment \
   --rpc-url $RPC_URL \
   --private-key $PRIVATE_KEY \
   --broadcast \
-  --constructor-args $REGISTRY_ADDRESS $BYTECODE_HASH $LOG_INDEX "$SIGNER_IDENTITY")
+  --constructor-args $REGISTRY_ADDRESS $BYTECODE_HASH "$PROVENANCE_URI" "$SIGNER_IDENTITY")
 
 echo "$DEPLOY_OUTPUT"
 
-# Safely extract the deployed target address
 TARGET_ADDRESS=$(echo "$DEPLOY_OUTPUT" | grep "Deployed to:" | awk '{print $3}')
+[ -z "$TARGET_ADDRESS" ] && { echo "deploy failed, no address found"; exit 1; }
 
-if [ -z "$TARGET_ADDRESS" ]; then
-    echo "🔴 Error: Deployment failed or could not extract contract address."
-    exit 1
-fi
-
-echo -e "\n5. Running Verifier on $TARGET_ADDRESS..."
+echo "verifying $TARGET_ADDRESS"
 node verifier.js $TARGET_ADDRESS

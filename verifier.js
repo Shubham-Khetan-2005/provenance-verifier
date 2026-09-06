@@ -1,85 +1,87 @@
 const { ethers } = require("ethers");
 const { execSync } = require("child_process");
 const fs = require("fs");
-const dotenv = require("dotenv");
-dotenv.config();
+const os = require("os");
+const path = require("path");
+require("dotenv").config();
 
-// Ensure your Alchemy URL is active in your .env or replace this string
-const provider = new ethers.JsonRpcProvider(process.env.RPC_URL || "https://eth-sepolia.g.alchemy.com/v2/XlSNcm38QIP8s7FOVhgCLLUECVAplZhM"); 
-const registryABI = [
-  "function records(address) view returns (address, bytes32, string, string, uint256)"
-];
+const provider = new ethers.JsonRpcProvider(process.env.RPC_URL);
+const abi = ["function records(address) view returns (address, bytes32, string, string, uint256)"];
 
-async function verifyProvenance(registryAddress, targetContractAddress) {
+async function fetchFile(uri, name) {
+  const res = await fetch(`${uri}/${name}`);
+  if (!res.ok) throw new Error(`fetch ${uri}/${name} failed: ${res.status}`);
+  return res.text();
+}
+
+async function verify(registryAddr, target) {
+  let tmpDir;
   try {
-    const registryContract = new ethers.Contract(registryAddress, registryABI, provider);
-
-    // 1. Fetch On-Chain Truth
-    const record = await registryContract.records(targetContractAddress);
-    const [deployer, artifactHash, rekorRef, signerIdentity, timestamp] = record;
+    const registry = new ethers.Contract(registryAddr, abi, provider);
+    const [deployer, artifactHash, provenanceURI, signerIdentity, timestamp] =
+      await registry.records(target);
 
     if (timestamp === 0n) {
-      console.log("🟡 Unregistered: No provenance record found for this address.");
+      console.log("no provenance record for this address");
       return;
     }
 
-    const liveBytecode = await provider.getCode(targetContractAddress);
-    const liveBytecodeHash = ethers.keccak256(liveBytecode);
+    const liveCode = await provider.getCode(target);
+    const liveHash = ethers.keccak256(liveCode);
 
-    // 2. Local Rebuild & Bytecode Comparison
-    console.log("Rebuilding source via Foundry to verify runtime bytecode...");
-    execSync("forge build", { stdio: "ignore" });
-    const localArtifact = require("./out/VendorPayment.sol/VendorPayment.json");
-    const localBytecodeHash = ethers.keccak256(localArtifact.deployedBytecode.object);
-
-    if (liveBytecodeHash !== localBytecodeHash) {
-      console.error("🔴 Mismatch: Rebuilt source does NOT match on-chain bytecode.");
-      return;
-    }
-    if (liveBytecodeHash !== artifactHash) {
-      console.error("🔴 Mismatch: On-chain artifact hash does not match live bytecode.");
+    if (liveHash !== artifactHash) {
+      console.error("on-chain hash doesn't match live bytecode");
       return;
     }
 
-    // 3. Native Cosign Verification
-    console.log(`Delegating bundle and identity verification to Cosign for ${signerIdentity}...`);
+    console.log(`fetching provenance from ${provenanceURI}`);
+    const payloadText = await fetchFile(provenanceURI, "payload.json");
+    const bundleText = await fetchFile(provenanceURI, "bundle.json");
+
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "provenance-"));
+    const payloadPath = path.join(tmpDir, "payload.json");
+    const bundlePath = path.join(tmpDir, "bundle.json");
+    fs.writeFileSync(payloadPath, payloadText);
+    fs.writeFileSync(bundlePath, bundleText);
+
+    console.log(`checking signature for ${signerIdentity}`);
     try {
-        // We verify the exact local payload file to preserve byte-for-byte signature integrity
-        execSync(`cosign verify-blob payload.json \\
-            --bundle bundle.json \\
-            --certificate-identity="${signerIdentity}" \\
-            --certificate-oidc-issuer-regexp="https://(accounts.google.com|github.com/login/oauth|login.microsoftonline.com/.*)"`, 
-            { stdio: "pipe" } 
-        );
-    } catch (cosignError) {
-        console.error("🔴 Mismatch: Cosign rejected the bundle/identity binding.");
-        console.error(cosignError.stderr?.toString() || cosignError.message);
-        return;
-    }
-
-    // 4. Semantic Validation Against On-Chain Truth
-    const verifiedPayload = JSON.parse(fs.readFileSync("payload.json", "utf8"));
-
-    if (verifiedPayload.bytecodeHash !== artifactHash) {
-      console.error("🔴 Mismatch: The signed payload hash does not match the on-chain runtime bytecode.");
+      execSync(
+        `cosign verify-blob "${payloadPath}" --bundle "${bundlePath}" ` +
+        `--certificate-identity="${signerIdentity}" ` +
+        `--certificate-oidc-issuer="https://github.com/login/oauth"`,
+        { stdio: "pipe" }
+      );
+    } catch (e) {
+      console.error("cosign rejected the bundle:", e.stderr?.toString() || e.message);
       return;
     }
 
-    if (verifiedPayload.deployer.toLowerCase() !== deployer.toLowerCase()) {
-      console.error("🔴 Mismatch: The signed payload deployer does not match the on-chain EOA wallet.");
+    const signedPayload = JSON.parse(payloadText);
+    if (signedPayload.bytecodeHash !== artifactHash) {
+      console.error("signed payload hash doesn't match on-chain bytecode");
+      return;
+    }
+    if (signedPayload.deployer.toLowerCase() !== deployer.toLowerCase()) {
+      console.error("signed deployer doesn't match on-chain deployer");
       return;
     }
 
-    console.log("\n🟢 VERIFIED");
-    console.log(" - Ethereum Deployment: Authentic");
-    console.log(" - Bytecode Match: 100% Confirmed");
-    console.log(` - Sigstore Provenance: Cryptographically bound to ${signerIdentity} (Log Index: ${rekorRef})`);
-
-  } catch (error) {
-    console.error("🔴 Verifier failed:", error.message);
+    console.log("\nVERIFIED");
+    console.log(`deployment authentic, bytecode confirmed`);
+    console.log(`signed by ${signerIdentity}`);
+    console.log(`source: ${provenanceURI}`);
+  } catch (err) {
+    console.error("verify failed:", err.message);
+  } finally {
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
-const targetAddress = process.argv[2];
-verifyProvenance(process.env.REGISTRY_ADDRESS, targetAddress);
-console.log("Using registry address:", process.env.REGISTRY_ADDRESS);
+const target = process.argv[2];
+if (!target) {
+  console.error("usage: node verifier.js <contract address>");
+  process.exit(1);
+}
+
+verify(process.env.REGISTRY_ADDRESS, target);

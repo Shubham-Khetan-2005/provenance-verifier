@@ -5,7 +5,7 @@ contract ProvenanceRegistry {
     struct Provenance {
         address deployer;
         bytes32 artifactHash;
-        string rekorRef;
+        string provenanceURI;
         string signerIdentity;
         uint256 timestamp;
     }
@@ -15,7 +15,7 @@ contract ProvenanceRegistry {
 
     event Registered(address indexed contractAddress, address indexed deployer);
 
-    function register(address deployer, bytes32 artifactHash, string calldata rekorRef, string calldata signerIdentity)
+    function register(address deployer, bytes32 artifactHash, string calldata provenanceURI, string calldata signerIdentity)
         external
     {
         require(records[msg.sender].timestamp == 0, "Already registered");
@@ -23,7 +23,7 @@ contract ProvenanceRegistry {
         records[msg.sender] = Provenance({
             deployer: deployer,
             artifactHash: artifactHash,
-            rekorRef: rekorRef,
+            provenanceURI: provenanceURI,
             signerIdentity: signerIdentity,
             timestamp: block.timestamp
         });
